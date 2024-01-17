@@ -9,6 +9,11 @@ import { useParams } from "react-router-dom";
 import Skeleton from "@mui/material/Skeleton";
 import axios from "axios";
 import { myContext } from "./MainContainer";
+import io from "socket.io-client";
+
+const ENDPOINT = "https://localhost:8080";
+
+var socket, chat; 
 
 function ChatArea() {
   const lightTheme = useSelector((state) => state.themeKey);
@@ -16,15 +21,17 @@ function ChatArea() {
   const messagesEndRef = useRef(null);
   const dyParams = useParams();
   const [chat_id, chat_user] = dyParams._id.split("&");
-  // console.log(chat_id, chat_user);
   const userData = JSON.parse(localStorage.getItem("userData"));
   const [allMessages, setAllMessages] = useState([]);
-  // console.log("Chat area id : ", chat_id._id);
+  const [allMessagesCopy, setAllMessagesCopy] = useState([]);
   // const refresh = useSelector((state) => state.refreshKey);
   const { refresh, setRefresh } = useContext(myContext);
   const [loaded, setloaded] = useState(false);
+
+  const [socketConnectionStatus, setSocketConnectionStatus] = useState(false);
+
   const sendMessage = () => {
-    // console.log("SendMessage Fired to", chat_id._id);
+    var data = null;
     const config = {
       headers: {
         Authorization: `Bearer ${userData.data.token}`,
@@ -39,13 +46,20 @@ function ChatArea() {
         },
         config
       )
-      .then(({ data }) => {
+      .then(({ response }) => {
+        data = response;
         console.log("Message Fired");
       });
+      socket.emit("newMessage", data);
   };
-  // const scrollToBottom = () => {
-  //   messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  // };
+
+  useEffect(() => {
+    socket = io(ENDPOINT);
+    socket.emit("setup", userData);
+    socket.on("connection", ()=>{
+      setSocketConnectionStatus(!setSocketConnectionStatus);
+    });
+  }, []);
 
   useEffect(() => {
     console.log("Users refreshed");
@@ -63,6 +77,36 @@ function ChatArea() {
       });
     // scrollToBottom();
   }, [refresh, chat_id, userData.data.token]);
+
+  // new message recieved
+  useEffect(() => {
+    socket.on("message recieved", (newMessage) => {
+      if (!allMessagesCopy || allMessagesCopy._id !== newMessage._id) {
+        // setAllMessages([...allMessages], newMessage);
+      } else {
+        setAllMessages([...allMessages], newMessage);
+      }
+    });
+  });
+
+
+  // fetch Chats
+  useEffect(() => {
+    const config = {
+      headers: {
+      Authorization: `Bearer ${userData. data. token}`,
+      },
+    };
+    axios
+    .get("http://localhost:8080/message/" + chat_id, config)
+    .then(({ data }) => {
+        setAllMessages(data);
+        setloaded(true);
+        socket.emit("join chat", chat_id);
+      });
+    setAllMessagesCopy(allMessages);
+  }, [refresh, chat_id, userData.data.token, allMessages]);
+
 
   if (!loaded) {
     return (
